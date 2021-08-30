@@ -3,21 +3,22 @@ package com.gravylab.elasticstack;
 import org.apache.http.HttpHost;
 import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequest;
 import org.elasticsearch.action.admin.indices.template.delete.DeleteIndexTemplateRequest;
+import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.support.master.AcknowledgedResponse;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestClient;
 import org.elasticsearch.client.RestClientBuilder;
 import org.elasticsearch.client.RestHighLevelClient;
-import org.elasticsearch.client.indices.DeleteComposableIndexTemplateRequest;
+import org.elasticsearch.client.indices.AnalyzeResponse;
 import org.elasticsearch.client.indices.GetIndexRequest;
 import org.elasticsearch.client.indices.IndexTemplatesExistRequest;
+import org.elasticsearch.search.SearchHit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 
 import java.io.IOException;
+import java.util.Arrays;
 
-import static com.gravylab.elasticstack.TemplateCreateTest.TEST_INDEX_1;
-import static com.gravylab.elasticstack.TemplateCreateTest.TEST_TEMPLATE;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class CommonTestClass {
@@ -65,10 +66,26 @@ public class CommonTestClass {
         GetIndexRequest getIndexRequest = new GetIndexRequest(indexName);
         boolean exists = client.indices().exists(getIndexRequest, RequestOptions.DEFAULT);
         if (exists) {
-            DeleteIndexRequest deleteIndexRequest = new DeleteIndexRequest(TEST_INDEX_1);
+            DeleteIndexRequest deleteIndexRequest = new DeleteIndexRequest(indexName);
             AcknowledgedResponse acknowledgedResponse = client.indices().delete(deleteIndexRequest, RequestOptions.DEFAULT);
             assertTrue(acknowledgedResponse.isAcknowledged());
         }
     }
 
+    protected void printAnalyzeResponse(AnalyzeResponse analyzeResponse) {
+        analyzeResponse
+                .getTokens()
+                .stream()
+                .map(AnalyzeResponse.AnalyzeToken::getTerm)
+                .forEach(System.err::println);
+    }
+
+    protected void printSearchResponse(SearchResponse searchResponse) {
+        Arrays.stream(searchResponse
+                        .getInternalResponse()
+                        .hits()
+                        .getHits())
+                .map(SearchHit::getSourceAsMap)
+                .forEach(System.err::println);
+    }
 }
