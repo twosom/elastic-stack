@@ -2,6 +2,7 @@ package com.gravylab.elasticstack;
 
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.index.IndexRequest;
+import org.elasticsearch.action.index.IndexResponse;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.client.RequestOptions;
@@ -412,8 +413,7 @@ public class ElasticSearchTest extends CommonTestClass {
 
     @DisplayName("날짜/시간 범위 타입을 갖는 인덱스 생성")
     @Test
-    void create_index_with_date_range_field() throws Exception {
-
+    void create_index_have_date_range_type() throws Exception {
         removeIfExistsIndex(RANGE_TEST_INDEX);
 
         XContentBuilder builder = XContentFactory.jsonBuilder();
@@ -440,18 +440,26 @@ public class ElasticSearchTest extends CommonTestClass {
 
     @DisplayName("날짜/시간 범위를 갖는 도큐먼트 인덱싱")
     @Test
-    void indexing_data_for_date_range_field() throws Exception {
-        create_index_with_date_range_field();
+    void index_data_have_date_range_type() throws Exception {
+        create_index_have_date_range_type();
         IndexRequest indexRequest = new IndexRequest(RANGE_TEST_INDEX)
-                .id("1")
-                .source(Map.of(TEST_DATE, Map.of("gte", "2021-01-21", "lt", "2021-01-25")));
+                .source(
+                        Map.of(
+                                TEST_DATE, Map.of(
+                                        "gte", "2021-01-21",
+                                        "lt", "2021-01-25"
+                                ))
+                );
 
         client.index(indexRequest, RequestOptions.DEFAULT);
+
+        Thread.sleep(900);
     }
 
     @DisplayName("relation 파라미터를 이용한 범위 설정")
     @Test
-    void search_with_range_query_with_relation_parameter() throws Exception {
+    void search_request_with_date_range() throws Exception {
+        index_data_have_date_range_type();
         SearchRequest searchRequest = new SearchRequest(RANGE_TEST_INDEX)
                 .source(
                         new SearchSourceBuilder()
@@ -459,6 +467,10 @@ public class ElasticSearchTest extends CommonTestClass {
                                         rangeQuery(TEST_DATE)
                                                 .gte("2021-01-21")
                                                 .lte("2021-01-28")
+                                                //TODO relation 에 들어갈 수 있는 값들
+                                                // intersects(기본값) : 쿼리 범위 값이 도큐먼트의 범위 데이터를 일부라도 포함하기만 하면 된다.
+                                                // contains : 도큐먼트의 범위 데이터가 쿼리 범위 값을 모두 포함해야 한다.
+                                                // within : 도큐먼트의 범위 데이터가 쿼리 범위 값 내에 전부 속해야 한다.
                                                 .relation("within")
                                 )
                 );
@@ -466,4 +478,212 @@ public class ElasticSearchTest extends CommonTestClass {
         printSearchResponse(searchResponse);
     }
 
+
+    @DisplayName("하나의 쿼리를 사용하는 must 타입")
+    @Test
+    void search_with_bool_query_must_type() throws Exception {
+        SearchRequest searchRequest = new SearchRequest(KIBANA_SAMPLE_DATA_ECOMMERCE)
+                .source(
+                        new SearchSourceBuilder()
+                                .query(
+                                        boolQuery()
+                                                .must(
+                                                        matchQuery(CUSTOMER_FIRST_NAME, "mary")
+                                                )
+                                )
+                );
+        SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+        printSearchResponse(searchResponse);
+    }
+
+    @DisplayName("복수 개의 쿼리를 사용하는 must 타입")
+    @Test
+    void search_with_multi_bool_query() throws Exception {
+        SearchRequest searchRequest = new SearchRequest(KIBANA_SAMPLE_DATA_ECOMMERCE)
+                .source(
+                        new SearchSourceBuilder()
+                                .query(
+                                        boolQuery()
+                                                .must(
+                                                        termQuery(DAY_OF_WEEK, "Sunday")
+                                                )
+                                                .must(
+                                                        matchQuery(CUSTOMER_FULL_NAME, "mary")
+                                                )
+                                )
+                );
+
+        SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+        printSearchResponse(searchResponse);
+    }
+
+    @DisplayName("하나의 쿼리를 사용하는 must_not 타입")
+    @Test
+    void search_with_must_not_bool_query() throws Exception {
+        SearchRequest searchRequest = new SearchRequest(KIBANA_SAMPLE_DATA_ECOMMERCE)
+                .source(
+                        new SearchSourceBuilder()
+                                .query(
+                                        boolQuery()
+                                                .mustNot(
+                                                        matchQuery(CUSTOMER_FULL_NAME, "mary")
+                                                )
+                                )
+                );
+
+        SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+        printSearchResponse(searchResponse);
+    }
+
+    @DisplayName("다른 타입과 must_not 타입을 함께 사용하는 경우")
+    @Test
+    void search_with_complex_bool_query() throws Exception {
+        SearchRequest searchRequest = new SearchRequest(KIBANA_SAMPLE_DATA_ECOMMERCE)
+                .source(
+                        new SearchSourceBuilder()
+                                .query(
+                                        boolQuery()
+                                                .must(
+                                                        matchQuery(CUSTOMER_FIRST_NAME, "mary")
+                                                )
+                                                .mustNot(
+                                                        termQuery(CUSTOMER_LAST_NAME, "bailey")
+                                                )
+                                )
+                );
+
+        SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+        printSearchResponse(searchResponse);
+    }
+
+    @DisplayName("하나의 쿼리를 사용하는 should 타입")
+    @Test
+    void search_with_single_should_type() throws Exception {
+        SearchRequest searchRequest = new SearchRequest(KIBANA_SAMPLE_DATA_ECOMMERCE)
+                .source(
+                        new SearchSourceBuilder()
+                                .query(
+                                        boolQuery()
+                                                .should(
+                                                        matchQuery(CUSTOMER_FIRST_NAME, "marh")
+                                                )
+                                )
+                );
+        SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+        printSearchResponse(searchResponse);
+    }
+
+    @DisplayName("복수 개의 쿼리를 사용하는 should 타입")
+    @Test
+    void search_with_multiple_should_type() throws Exception {
+        SearchRequest searchRequest = new SearchRequest(KIBANA_SAMPLE_DATA_ECOMMERCE)
+                .source(
+                        new SearchSourceBuilder()
+                                .query(
+                                        boolQuery()
+                                                .should(
+                                                        termQuery(DAY_OF_WEEK, "Sunday")
+                                                )
+                                                .should(
+                                                        matchQuery(CUSTOMER_FULL_NAME, "mary")
+                                                )
+                                )
+                );
+        SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+        printSearchResponse(searchResponse);
+    }
+
+
+    @DisplayName("must 타입만 단독으로 사용하는 쿼리")
+    @Test
+    void search_with_only_must() throws Exception {
+        SearchRequest searchRequest = new SearchRequest(KIBANA_SAMPLE_DATA_ECOMMERCE)
+                .source(
+                        new SearchSourceBuilder()
+                                .query(
+                                        boolQuery()
+                                                .must(
+                                                        matchQuery(CUSTOMER_FULL_NAME, "mary")
+                                                )
+                                )
+                );
+        SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+        printSearchResponse(searchResponse);
+    }
+
+    @DisplayName("must 와 should 타입을 같이 사용하는 쿼리")
+    @Test
+    void search_with_must_and_should() throws Exception {
+        SearchRequest searchRequest = new SearchRequest(KIBANA_SAMPLE_DATA_ECOMMERCE)
+                .source(
+                        new SearchSourceBuilder()
+                                .query(
+                                        boolQuery()
+                                                .must(
+                                                        matchQuery(CUSTOMER_FULL_NAME, "mary")
+                                                )
+                                                //TODO should 를 사용해 도큐먼트의 검색 순위를 최적화할 수 있다.
+                                                .should(
+                                                        termQuery(DAY_OF_WEEK, "Monday")
+                                                )
+                                )
+                );
+        SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+        printSearchResponse(searchResponse);
+    }
+
+    @DisplayName("하나의 쿼리를 사용하는 filter 타입")
+    @Test
+    void search_with_filter_type() throws Exception {
+        SearchRequest searchRequest = new SearchRequest(KIBANA_SAMPLE_DATA_ECOMMERCE)
+                .source(
+                        new SearchSourceBuilder()
+                                .query(
+                                        boolQuery()
+                                                .filter(
+                                                        rangeQuery("products.base_price")
+                                                                .gte(30)
+                                                                .lte(60)
+                                                )
+                                )
+                );
+
+        SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+        printSearchResponse(searchResponse);
+    }
+
+    @DisplayName("filter 와 must 타입을 같이 사용하는 쿼리")
+    @Test
+    void search_with_filter_and_must() throws Exception {
+        SearchRequest searchRequest = new SearchRequest(KIBANA_SAMPLE_DATA_ECOMMERCE)
+                .source(
+                        new SearchSourceBuilder()
+                                .query(
+                                        boolQuery()
+                                                .filter(
+                                                        termQuery(DAY_OF_WEEK, "Sunday")
+                                                )
+                                                .must(
+                                                        matchQuery(CUSTOMER_FULL_NAME, "mary")
+                                                )
+                                )
+                );
+        SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+        printSearchResponse(searchResponse);
+    }
+
+    @DisplayName("와일드카드 패턴 검색")
+    @Test
+    void search_with_wildcard() throws Exception {
+        SearchRequest searchRequest = new SearchRequest(KIBANA_SAMPLE_DATA_ECOMMERCE)
+                .source(
+                        new SearchSourceBuilder()
+                                .query(
+                                        wildcardQuery("customer_full_name.keyword", "M?r*")
+                                )
+                );
+
+        SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+        printSearchResponse(searchResponse);
+    }
 }
